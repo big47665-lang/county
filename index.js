@@ -1,9 +1,18 @@
 require('dotenv').config();
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
-const { hourlyPhrases, counterPhrase, startMessage } = require('./config/phrases');
+const {
+  hourlyPhrases,
+  counterPhrase,
+  startMessage,
+  dartChooseCountMessage,
+  dartWaitingMessage,
+  dartThrowResultMessage,
+  dartWinnerMessage,
+  dartRoundsPerPlayer,
+} = require('./config/phrases');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -104,6 +113,102 @@ bot.command('count', async (ctx) => {
     }
   };
   sendNext();
+});
+
+// ---------- بازی دارت ----------
+// وضعیت بازی‌های در حال اجرا، فقط توی حافظه (با ری‌استارت بات پاک میشه)
+// کلید = آیدی گروه، مقدار = { maxPlayers, players: { userId: { name, score, throws } }, order: [userId,...] }
+const dartGames = {};
+
+function fillTemplate(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (_, key) => (vars[key] !== undefined ? vars[key] : `{${key}}`));
+}
+
+bot.command('dart', async (ctx) => {
+  if (ctx.chat.type === 'private') {
+    return ctx.reply('این دستور فقط داخل گروه کار می‌کنه.');
+  }
+  return ctx.reply(
+    dartChooseCountMessage,
+    Markup.inlineKeyboard([
+      Markup.button.callback('2 نفر', 'dart_start_2'),
+      Markup.button.callback('3 نفر', 'dart_start_3'),
+      Markup.button.callback('4 نفر', 'dart_start_4'),
+    ])
+  );
+});
+
+bot.action(/dart_start_(\d)/, async (ctx) => {
+  const maxPlayers = parseInt(ctx.match[1], 10);
+  const chatId = ctx.chat.id;
+
+  dartGames[chatId] = {
+    maxPlayers,
+    players: {},
+    order: [],
+  };
+
+  await ctx.answerCbQuery();
+  await ctx.editMessageText(fillTemplate(dartWaitingMessage, { max: maxPlayers }));
+});
+
+// وقتی یه نفر خودش ایموجی 🎯 رو بفرسته، تلگرام خودش انیمیشن رو نشون میده
+// و نتیجه (عدد ۱ تا ۶) رو توی همون پیام برای بات می‌فرسته
+bot.on('message', async (ctx, next) => {
+  const dice = ctx.message && ctx.message.dice;
+  if (!dice || dice.emoji !== '🎯') {
+    return next();
+  }
+
+  const chatId = ctx.chat.id;
+  const game = dartGames[chatId];
+  if (!game) {
+    return; // بازی فعالی توی این گروه نیست، نادیده بگیر
+  }
+
+  const userId = ctx.from.id;
+  const playerName = ctx.from.first_name || ctx.from.username || 'بازیکن';
+
+  // اگه بازیکن جدیده و هنوز جا هست، ثبتش کن
+  if (!game.players[userId]) {
+    if (Object.keys(game.players).length >= game.maxPlayers) {
+      return; // بازی پره، این پرتاب حساب نمیشه
+    }
+    game.players[userId] = { name: playerName, score: 0, throws: 0 };
+    game.order.push(userId);
+  }
+
+  const player = game.players[userId];
+  if (player.throws >= dartRoundsPerPlayer) {
+    return; // این بازیکن نوبتش تموم شده
+  }
+
+  player.throws += 1;
+  player.score += dice.value;
+
+  await ctx.reply(
+    fillTemplate(dartThrowResultMessage, {
+      player: player.name,
+      points: dice.value,
+      total: player.score,
+    })
+  );
+
+  const allPlayersFull = Object.keys(game.players).length >= game.maxPlayers;
+  const everyoneFinished = allPlayersFull && game.order.every((id) => game.players[id].throws >= dartRoundsPerPlayer);
+
+  if (everyoneFinished) {
+    let winnerId = game.order[0];
+    for (const id of game.order) {
+      if (game.players[id].score > game.players[winnerId].score) {
+        winnerId = id;
+      }
+    }
+    const winner = game.players[winnerId];
+
+    await ctx.reply(fillTemplate(dartWinnerMessage, { player: winner.name, total: winner.score }));
+    delete dartGames[chatId];
+  }
 });
 
 // ---------- پیام خودکار ساعتی ----------
