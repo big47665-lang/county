@@ -34,7 +34,7 @@ let data = loadData();
 
 const MAX_COUNT = 25;                 // حداکثر عدد قابل قبول برای /count
 const COOLDOWN_MS = 30 * 60 * 1000;   // 30 دقیقه فاصله بین دو استفاده هر کاربر
-const STEP_MS = 30 * 1000;            // فاصله بین هر پیام شمارشی
+const STEP_MS = 5 * 1000;            // فاصله بین هر پیام شمارشی
 
 // ---------- /start ----------
 bot.start((ctx) => {
