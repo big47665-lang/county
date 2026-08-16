@@ -232,5 +232,16 @@ cron.schedule('0 * * * *', async () => {
 bot.launch();
 console.log('بات با موفقیت اجرا شد.');
 
+// این لیست باعث میشه دستورات توی باکس / کنار پیام تلگرام نشون داده بشن
+bot.telegram.setMyCommands([
+  { command: 'start', description: 'شروع و راهنما' },
+  { command: 'count', description: 'شمارش تا یک عدد دلخواه (حداکثر 25)' },
+  { command: 'dart', description: 'شروع بازی دارت' },
+]).then(() => {
+  console.log('لیست دستورات با موفقیت ثبت شد.');
+}).catch((e) => {
+  console.error('خطا در ثبت لیست دستورات:', e.message);
+});
+
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
